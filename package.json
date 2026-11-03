@@ -1,21 +1,29 @@
 {
-  "name": "marketing-challenge",
+  "name": "classrush",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "test": "node --import tsx tests/import.test.ts && node tests/security.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.57.0",
+    "exceljs": "^4.4.0",
     "next": "^15.5.0",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "@supabase/supabase-js": "^2.57.0"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.0",
+    "@electric-sql/pglite": "^0.5.14",
+    "@types/node": "^22.0.0",
     "@types/react": "^19.1.0",
-    "@types/node": "^22.0.0"
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.0"
+  },
+  "overrides": {
+    "postcss": "8.5.32"
   }
 }

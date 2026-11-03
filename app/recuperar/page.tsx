@@ -1,0 +1,40 @@
+"use client";
+import { useState } from "react";
+import { db } from "@/lib/classrush";
+export default function Reset() {
+  const [p, P] = useState(""),
+    [msg, M] = useState("");
+  return (
+    <main>
+      <header>⚡ CLASSRUSH</header>
+      <h1>Nueva contraseña</h1>
+      <form
+        onSubmit={async (e) => {
+          e.preventDefault();
+          const api = db();
+          if (!api) return M("Configuración de pruebas pendiente");
+          const { error } = await api.auth.updateUser({ password: p });
+          M(
+            error
+              ? error.message
+              : "Contraseña actualizada. Ya podés ingresar.",
+          );
+        }}
+      >
+        <label htmlFor="password">Contraseña (mínimo 10 caracteres)</label>
+        <input
+          id="password"
+          type="password"
+          autoComplete="new-password"
+          minLength={10}
+          required
+          value={p}
+          onChange={(e) => P(e.target.value)}
+        />
+        <button>Guardar contraseña</button>
+      </form>
+      <p role="status">{msg}</p>
+      <a href="/docente">Volver al panel</a>
+    </main>
+  );
+}
