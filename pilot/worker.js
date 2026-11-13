@@ -276,9 +276,14 @@ async function api(request, env, action) {
 
 function staticResponse(request, pathname) {
   if (request.method !== "GET" && request.method !== "HEAD") return new Response(null, { status: 405 });
-  const path = pathname.replace(/\/$/, "") || "/";
+  let path;
+  try {
+    path = decodeURIComponent(pathname).replace(/\/$/, "") || "/";
+  } catch {
+    return new Response("Página no encontrada", { status: 404 });
+  }
   const shell = path.replace(/^\/(jugar|partida)\/\d{6}$/, "/$1/000000");
-  const entry = assets[shell];
+  const entry = Object.hasOwn(assets, shell) ? assets[shell] : null;
   if (!entry) return new Response("Página no encontrada", { status: 404 });
   const [type, body] = entry;
   return new Response(request.method === "HEAD" ? null : Uint8Array.from(atob(body), (character) => character.charCodeAt(0)), {

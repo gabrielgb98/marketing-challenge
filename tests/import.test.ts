@@ -14,3 +14,6 @@ assert.equal(csvCell('=HYPERLINK("mal")'), '"\'=HYPERLINK(""mal"")"');
 console.log(
   "PASS: import validation, quoted CSV, multiline fields, formula injection protection",
 );
+
+assert.ok(importRows([headers, ["Pregunta", "A", "B", "C", "D", "", "35", "1000", "no"]])[0].errors.length);
+assert.ok(importRows([headers, ["Pregunta", "A", "B", "C", "D", "AB", "35", "1000", "no"]])[0].errors.length);

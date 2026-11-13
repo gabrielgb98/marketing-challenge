@@ -51,7 +51,7 @@ export default function Arena({
       if (state.server_now) {
         offset.current = new Date(state.server_now).getTime() - Date.now();
       }
-      G(state);
+      G(!host && !credential ? { ...state, joinOnly: true } : state);
     } catch (error) {
       if (request === latest.current) E(error instanceof Error ? error.message : "Error de conexión");
     }
