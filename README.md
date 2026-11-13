@@ -17,6 +17,6 @@ npm run build
 npm run dev
 ```
 
-Copiar `.env.example` a `.env.local` con un **Supabase de pruebas independiente**. Sin esas variables, la interfaz indica configuración pendiente y no usa credenciales de producción.
+Para desarrollo con Supabase, configurá `.env.example` con un entorno de pruebas aislado. El piloto alojado usa la misma interfaz con una base de prueba propia. La guía explica cómo entrar y probar una partida.
 
-Los scripts SQL originales permanecen como referencia histórica; no forman parte de la instalación ClassRush. IA desde PDF/PPTX/texto y verificación del histórico real pendientes. No se habilitaron servicios pagos.
+Los scripts SQL originales permanecen como referencia histórica; no forman parte de la instalación ClassRush. La importación admite CSV y XLSX. La verificación directa del histórico real sigue pendiente.

@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { db } from "@/lib/classrush";
+import { db } from "@/lib/api";
 export default function Reset() {
   const [p, P] = useState(""),
     [msg, M] = useState("");
@@ -13,12 +13,12 @@ export default function Reset() {
           e.preventDefault();
           const api = db();
           if (!api) return M("Configuración de pruebas pendiente");
-          const { error } = await api.auth.updateUser({ password: p });
-          M(
-            error
-              ? error.message
-              : "Contraseña actualizada. Ya podés ingresar.",
-          );
+          try {
+            await api.updatePassword(p);
+            M("Contraseña actualizada. Ya podés ingresar.");
+          } catch (error) {
+            M(error instanceof Error ? error.message : "No se pudo actualizar la contraseña.");
+          }
         }}
       >
         <label htmlFor="password">Contraseña (mínimo 10 caracteres)</label>

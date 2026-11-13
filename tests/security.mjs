@@ -8,6 +8,9 @@ const before = await db.query("select * from games");
 await db.exec(
   readFileSync("supabase/migrations/202611020001_classrush.sql", "utf8"),
 );
+await db.exec(
+  readFileSync("supabase/migrations/202611120001_classrush_game_controls.sql", "utf8"),
+);
 const teacher = "11111111-1111-4111-8111-111111111111",
   other = "22222222-2222-4222-8222-222222222222";
 await db.query("insert into auth.users values($1),($2)", [teacher, other]);
@@ -50,9 +53,12 @@ const secret = "a".repeat(64);
 const tid = (
   await db.query("select cr_join($1,$2,$3) t", [code, "Equipo", secret])
 ).rows[0].t;
-await fails("select cr_join($1,$2,$3)", [code, "Equipo", secret]);
+assert.equal((await db.query("select cr_join($1,$2,$3) t", [code, "Equipo", secret])).rows[0].t, tid);
+await fails("select cr_join($1,$2,$3)", [code, "equipo", "b".repeat(64)]);
 await as("authenticated", teacher);
-await db.query("select cr_advance($1)", [code]);
+await db.query("select cr_advance($1, 'lobby', 0)", [code]);
+await db.query("select cr_advance($1, 'lobby', 0)", [code]);
+assert.equal((await db.query("select cr_state($1) s", [code])).rows[0].s.status, "question");
 await as("anon");
 async function state(s = secret) {
   return (await db.query("select cr_state($1,$2,$3) s", [code, tid, s])).rows[0]

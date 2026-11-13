@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
-const config: NextConfig = {
+const pilot = process.env.NEXT_PUBLIC_CLASSRUSH_PILOT === "1";
+const config: NextConfig = pilot ? { output: "export", trailingSlash: true } : {
   async headers() {
     return [
       {

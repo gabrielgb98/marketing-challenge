@@ -4,3 +4,7 @@ node_modules
 !.env.example
 *.tsbuildinfo
 backups/
+out/
+dist/
+pilot/generated-assets.mjs
+.wrangler/

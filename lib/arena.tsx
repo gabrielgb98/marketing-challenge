@@ -1,41 +1,34 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { db, download, csvCell, type Question } from "./classrush";
-type State = {
-  code: string;
-  title: string;
-  status: string;
-  joinOnly?: boolean;
-  idx: number;
-  total: number;
-  started_at: string;
-  server_now: string;
-  question: Question | null;
-  ranking: { id: string; name: string; points: number }[];
-  answer: { choice: number; points: number | null } | null;
-  received: number;
-};
+import { download, csvCell, type GameState } from "./classrush";
+import { db, privatePilot } from "./api";
 type Credential = { id: string; secret: string };
 export default function Arena({
-  code,
+  code: initialCode,
   host = false,
 }: {
   code: string;
   host?: boolean;
 }) {
+  const [code, setCode] = useState(privatePilot ? "" : initialCode);
+  useEffect(() => {
+    if (privatePilot) setCode(location.pathname.split("/").filter(Boolean).at(-1) || "");
+  }, []);
   const api = db(),
-    [g, G] = useState<State | null>(null),
+    [g, G] = useState<GameState | null>(null),
     [name, N] = useState(""),
     [err, E] = useState(""),
     [busy, B] = useState(false),
     [now, Now] = useState(Date.now()),
     [credential, C] = useState<Credential | null>(null),
-    [auth, Auth] = useState(!host),
+    [auth, Auth] = useState<boolean | null>(host ? null : true),
+    [shareStatus, ShareStatus] = useState(""),
     offset = useRef(0),
     sent = useRef(false),
     latest = useRef(0);
   useEffect(() => {
-    try {
+    if (!code) return;
+    if (!host) try {
       const stored = localStorage.getItem("cr_team_" + code);
       if (stored) C(JSON.parse(stored));
     } catch {
@@ -43,35 +36,47 @@ export default function Arena({
         "No se pudo recuperar el equipo. Habilitá el almacenamiento del navegador.",
       );
     }
-    if (host && api) api.auth.getUser().then(({ data }) => Auth(!!data.user));
+    if (host && api) api.user().then((user) => Auth(!!user)).catch(() => Auth(false));
   }, [api, code, host]);
   async function refresh() {
     if (!api) return;
     const request = ++latest.current;
-    const r = await api.rpc("cr_state", {
-      c: code,
-      tid: credential?.id || null,
-      secret: credential?.secret || null,
-    });
-    if (request !== latest.current) return;
-    if (r.error) {
-      E(r.error.message);
-      return;
+    try {
+      const state = await api.game<GameState>("state", {
+        c: code,
+        tid: credential?.id ?? null,
+        secret: credential?.secret ?? null,
+      });
+      if (request !== latest.current) return;
+      if (state.server_now) {
+        offset.current = new Date(state.server_now).getTime() - Date.now();
+      }
+      G(state);
+    } catch (error) {
+      if (request === latest.current) E(error instanceof Error ? error.message : "Error de conexión");
     }
-    if (r.data.server_now)
-      offset.current = new Date(r.data.server_now).getTime() - Date.now();
-    G(r.data);
   }
   useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 1500),
-      n = setInterval(() => Now(Date.now()), 200);
+    if (!auth || !api || !code || g?.status === "finished") return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+    async function poll() {
+      await refresh();
+      if (!stopped) timer = setTimeout(poll, g?.status === "lobby" ? 2000 : 1500);
+    }
+    void poll();
     return () => {
-      clearInterval(t);
-      clearInterval(n);
+      stopped = true;
+      clearTimeout(timer);
       latest.current++;
     };
-  }, [api, code, credential]);
+  }, [api, auth, code, credential, g?.status]);
+  useEffect(() => {
+    if (g?.status !== "question") return;
+    Now(Date.now());
+    const timer = setInterval(() => Now(Date.now()), 200);
+    return () => clearInterval(timer);
+  }, [g?.status]);
   useEffect(() => {
     sent.current = false;
   }, [g?.idx]);
@@ -89,32 +94,43 @@ export default function Arena({
   }
   async function join() {
     if (!api) throw Error("Falta configurar el entorno de pruebas");
-    const secret = crypto.randomUUID() + crypto.randomUUID();
-    const r = await api.rpc("cr_join", { c: code, n: name.trim(), secret });
-    if (r.error) throw r.error;
-    const cred = { id: r.data, secret };
-    localStorage.setItem("cr_team_" + code, JSON.stringify(cred));
+    const pendingKey = "cr_pending_" + code;
+    const storageKey = "cr_team_" + code;
+    let secret: string;
+    try {
+      secret = localStorage.getItem(pendingKey) ?? crypto.randomUUID() + crypto.randomUUID();
+      localStorage.setItem(pendingKey, secret);
+    } catch {
+      throw Error("Habilitá el almacenamiento del navegador para conservar tu equipo.");
+    }
+    const id = await api.game<string>("join", { c: code, n: name.trim(), secret });
+    const cred = { id, secret };
     C(cred);
+    localStorage.setItem(storageKey, JSON.stringify(cred));
+    localStorage.removeItem(pendingKey);
   }
   async function submit(a: number) {
     if (!api || !g || !credential || sent.current) return;
     sent.current = true;
-    const r = await api.rpc("cr_submit", {
-      c: code,
-      tid: credential.id,
-      secret: credential.secret,
-      i: g.idx,
-      a,
-    });
-    if (r.error) {
+    try {
+      await api.game("submit", { c: code, tid: credential.id, secret: credential.secret, i: g.idx, a });
+      await refresh();
+    } catch (error) {
       sent.current = false;
-      throw r.error;
+      throw error;
     }
-    await refresh();
+  }
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(new URL("/jugar/" + code, location.origin).href);
+      ShareStatus("Enlace copiado");
+    } catch {
+      ShareStatus("Compartí el código " + code);
+    }
   }
   const q = g?.question,
     left =
-      q && g?.started_at
+      q && g?.started_at && g.status === "question"
         ? Math.max(
             0,
             Math.ceil(
@@ -140,6 +156,8 @@ export default function Arena({
           <h2>Entorno de pruebas sin configurar</h2>
           <p>Esta versión necesita un proyecto Supabase independiente.</p>
         </article>
+      ) : auth === null ? (
+        <p>Verificando tu sesión…</p>
       ) : host && !auth ? (
         <article>
           <h2>Ingresá con tu cuenta docente</h2>
@@ -148,7 +166,7 @@ export default function Arena({
           </a>
         </article>
       ) : !g ? (
-        <p>Buscando partida {code}…</p>
+        err ? <p><a href="/">Ingresar otro código</a></p> : <p>Buscando partida {code}…</p>
       ) : g.joinOnly ? (
         host ? (
           <article>
@@ -158,7 +176,7 @@ export default function Arena({
         ) : (
           <article>
             <div className="pill">Partida {code}</div>
-            <h1>Tu equipo entra en juego.</h1>
+            <h1>Registrá tu equipo</h1>
             <p>{g.title} · Un dispositivo por equipo</p>
             <form
               onSubmit={(e) => {
@@ -189,9 +207,9 @@ export default function Arena({
               <div className="pill">{g.title}</div>
               <h1>
                 {g.status === "finished"
-                  ? "¡Tenemos podio!"
+                  ? "Resultados finales"
                   : g.status === "lobby"
-                    ? "La clase está por encenderse."
+                    ? "Sala de espera"
                     : `Pregunta ${g.idx + 1} de ${g.total}`}
               </h1>
             </div>
@@ -199,6 +217,12 @@ export default function Arena({
               <div className="center">
                 <small>CÓDIGO</small>
                 <div className="code">{code}</div>
+                {g.status === "lobby" && (
+                  <>
+                    <button className="muted compact" onClick={copyLink}>Copiar enlace</button>
+                    <span className="small" role="status">{shareStatus}</span>
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -212,7 +236,7 @@ export default function Arena({
               </h2>
               <p>
                 {host
-                  ? `Ingresen a ${typeof location !== "undefined" ? location.origin : ""} y escriban el código.`
+                  ? "Compartí el enlace o pedí a los equipos que ingresen con el código."
                   : "Esperen a que el docente comience."}
               </p>
             </article>
@@ -224,7 +248,7 @@ export default function Arena({
                     ? "🔥 PUNTOS DOBLES"
                     : `${q.points} PUNTOS + VELOCIDAD`}
                 </div>
-                <strong className="timer">{left}s</strong>
+                {g.status === "question" && <strong className="timer">{left}s</strong>}
               </div>
               <h2 className="question">{q.text}</h2>
               <div className="choices">
@@ -251,7 +275,7 @@ export default function Arena({
                   </button>
                 ))}
               </div>
-              {g.status === "reveal" ? (
+              {g.status === "reveal" && q.correct !== undefined ? (
                 <p className="notice">
                   Correcta: {"ABCD"[q.correct]} · {q.options[q.correct]}{" "}
                   {g.answer
@@ -276,8 +300,7 @@ export default function Arena({
               disabled={busy || (g.status === "lobby" && !g.ranking.length)}
               onClick={() =>
                 act(async () => {
-                  const r = await api.rpc("cr_advance", { c: code });
-                  if (r.error) throw r.error;
+                  await api.game("advance", { c: code, expected_status: g.status, expected_idx: g.idx });
                   await refresh();
                 })
               }

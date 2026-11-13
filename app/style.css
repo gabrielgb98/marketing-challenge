@@ -311,3 +311,93 @@ button:hover:not(:disabled),
     font-size: 48px;
   }
 }
+
+:root {
+  color-scheme: dark;
+}
+body {
+  font-family: "Inter", "Geist", system-ui, sans-serif;
+  overflow-wrap: anywhere;
+}
+button,
+.btn {
+  background: #c4ff6b;
+  color: #171d0e;
+}
+.muted {
+  background: #353654;
+  color: #f7f7ff;
+}
+.choice,
+.text-button {
+  color: #fff;
+}
+.choice:nth-child(1) { background: #3459ce; }
+.choice:nth-child(2) { background: #b13850; }
+.choice:nth-child(3) { background: #875c13; }
+.choice:nth-child(4) { background: #08766a; }
+.rank {
+  flex-wrap: nowrap;
+}
+.rank b {
+  white-space: nowrap;
+}
+.home {
+  max-width: 1140px;
+  padding: 28px clamp(20px, 5vw, 48px);
+}
+.home-nav {
+  margin: 0;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #444265;
+}
+.home-nav .brand {
+  font-size: 24px;
+  letter-spacing: -0.04em;
+  text-decoration: none;
+}
+.home-nav .btn {
+  font-size: 14px;
+  margin: 0;
+  width: auto;
+}
+.home-nav span {
+  display: inline;
+  padding-left: 4px;
+}
+.home-content {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  align-items: center;
+  gap: clamp(30px, 6vw, 88px);
+  padding: clamp(55px, 12vh, 125px) 0;
+}
+.home h1 {
+  font-size: clamp(64px, 8vw, 116px);
+  line-height: 0.94;
+  margin: 0;
+}
+.home-content > div > p {
+  font-size: 19px;
+  max-width: 37ch;
+  margin: 24px 0 0;
+}
+.entry-card {
+  margin: 0;
+  padding: clamp(22px, 4vw, 38px);
+  background: #1e203c;
+  box-shadow: 0 20px 70px #090a1970;
+}
+.entry-card h2 {
+  margin: 0 0 24px;
+}
+.entry-code {
+  font-size: 28px;
+  letter-spacing: 0.22em;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 740px) {
+  .home-content { grid-template-columns: 1fr; }
+  .home-nav { gap: 10px; }
+  .home-nav .btn { padding: 12px; }
+}

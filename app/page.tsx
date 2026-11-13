@@ -1,45 +1,41 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
+
+
 export default function Home() {
-  const [c, set] = useState("");
+  const [code, setCode] = useState("");
   return (
-    <main>
-      <header>
-        ⚡ CLASSRUSH <span>APRENDER. COMPETIR. CONECTAR.</span>
+    <main className="home">
+      <header className="home-nav">
+        <Link className="brand" href="/">⚡ ClassRush</Link>
+        <Link className="btn muted compact" href="/docente">Espacio docente <span aria-hidden="true">↗</span></Link>
       </header>
-      <section className="center">
-        <div className="pill">Tu clase, en modo desafío</div>
-        <h1>
-          El conocimiento
-          <br />
-          <em>enciende el juego.</em>
-        </h1>
-        <p>Un equipo. Un dispositivo. Todas las ganas de ganar.</p>
-        <article>
-          <label htmlFor="code">Ingresá el código de tu partida</label>
-          <input
-            id="code"
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder="000000"
-            value={c}
-            maxLength={6}
-            onChange={(e) => set(e.target.value.replace(/\D/g, ""))}
-          />
-          <button
-            disabled={c.length !== 6}
-            onClick={() => location.assign("/jugar/" + c)}
-          >
-            Entrar al juego →
-          </button>
+      <section className="home-content">
+        <div>
+          <h1>Tu clase,<br /><em>en juego.</em></h1>
+          <p>Competí por equipos en cuestionarios en vivo. Un dispositivo por grupo.</p>
+        </div>
+        <article className="entry-card">
+          <h2>Unirse a una partida</h2>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            if (code.length === 6) location.assign("/jugar/" + code);
+          }}>
+            <label htmlFor="code">Código de 6 dígitos</label>
+            <input
+              id="code"
+              className="entry-code"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="000000"
+              value={code}
+              maxLength={6}
+              onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+            />
+            <button disabled={code.length !== 6}>Entrar a la partida →</button>
+          </form>
         </article>
-        <Link className="btn muted" href="/docente">
-          Soy docente · Ir a mi biblioteca
-        </Link>
-        <p className="small">
-          Los estudiantes participan sin crear una cuenta.
-        </p>
       </section>
     </main>
   );

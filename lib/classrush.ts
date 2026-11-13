@@ -1,14 +1,3 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-let client: SupabaseClient | null = null;
-export function db() {
-  if (client) return client;
-  const url = process.env.NEXT_PUBLIC_CLASSRUSH_SUPABASE_URL,
-    key = process.env.NEXT_PUBLIC_CLASSRUSH_SUPABASE_ANON_KEY;
-  // Deliberately never fall back to Marketing Challenge production credentials.
-  if (!url || !key) return null;
-  client = createClient(url, key);
-  return client;
-}
 export type Question = {
   text: string;
   options: string[];
@@ -24,6 +13,34 @@ export type Quiz = {
   description: string;
   questions: Question[];
 };
+export type GameStatus = "lobby" | "question" | "reveal" | "finished";
+export type GameSummary = {
+  code: string;
+  title: string;
+  status: GameStatus;
+  created_at: string;
+};
+export type GameState = {
+  code: string;
+  title: string;
+  status: GameStatus;
+  joinOnly?: boolean;
+  idx: number;
+  total: number;
+  started_at: string | null;
+  server_now?: string;
+  question: (Omit<Question, "correct"> & { correct?: number }) | null;
+  ranking: { id: string; name: string; points: number }[];
+  answer: { choice: number; points: number | null } | null;
+  received: number | null;
+};
+export const statusLabels: Record<GameStatus, string> = {
+  lobby: "Sala de espera",
+  question: "En juego",
+  reveal: "En juego",
+  finished: "Finalizada",
+};
+
 export const blank = (): Question => ({
   text: "",
   options: ["", "", "", ""],
@@ -113,12 +130,15 @@ export function importRows(rows: string[][]) {
     headers.some((h, i) => rows[0][i]?.trim().toLowerCase() !== h)
   )
     throw Error("Encabezados inválidos. Usá la plantilla.");
+  if (rows.length === 1) throw Error("El archivo no contiene preguntas");
   if (rows.length > 101) throw Error("Máximo 100 preguntas");
   return rows.slice(1).map((r, index) => {
     const q: Question = {
       text: r[0] ?? "",
       options: r.slice(1, 5),
-      correct: "ABCD".indexOf((r[5] ?? "").trim().toUpperCase()),
+      correct: /^[A-D]$/i.test((r[5] ?? "").trim())
+        ? "ABCD".indexOf(r[5].trim().toUpperCase())
+        : -1,
       seconds: Number(r[6]),
       points: Number(r[7]),
       double: /^(si|sí|true|1)$/i.test((r[8] ?? "").trim()),

@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import {
-  db,
   blank,
   validate,
   download,
@@ -10,12 +9,15 @@ import {
   importRows,
   headers,
   type Quiz,
+  type GameState,
+  type GameSummary,
+  statusLabels,
   type Question,
 } from "@/lib/classrush";
-import type { User } from "@supabase/supabase-js";
+import { db, privatePilot, type Teacher } from "@/lib/api";
 export default function Teacher() {
   const api = db();
-  const [user, U] = useState<User | null>(null),
+  const [user, U] = useState<Teacher | null>(null),
     [ready, R] = useState(false),
     [email, EM] = useState(""),
     [password, PW] = useState(""),
@@ -25,43 +27,28 @@ export default function Teacher() {
     [busy, B] = useState(false);
   const [quizzes, Q] = useState<Quiz[]>([]),
     [edit, E] = useState<Partial<Quiz> | null>(null),
-    [games, G] = useState<any[]>([]),
+    [games, G] = useState<GameSummary[]>([]),
     [preview, PV] = useState<ReturnType<typeof importRows>>([]),
     [tab, T] = useState("library");
   async function load() {
     if (!api) return;
-    const [a, b, p] = await Promise.all([
-      api
-        .from("cr_quizzes")
-        .select("*")
-        .eq("archived", false)
-        .order("created_at", { ascending: false }),
-      api
-        .from("cr_games")
-        .select("code,title,status,created_at")
-        .order("created_at", { ascending: false }),
-      api.from("cr_profiles").select("name").maybeSingle(),
-    ]);
-    if (a.error || b.error)
-      MSG(a.error?.message || b.error?.message || "Error");
-    Q(a.data || []);
-    G(b.data || []);
-    if (p.data) N(p.data.name);
+    const { quizzes, games, name } = await api.library();
+    Q(quizzes);
+    G(games);
+    N(name || "");
   }
   useEffect(() => {
     if (!api) {
       R(true);
       return;
     }
-    api.auth.getUser().then(({ data }) => {
-      U(data.user);
-      R(true);
-    });
-    const { data } = api.auth.onAuthStateChange((_e, s) => U(s?.user ?? null));
-    return () => data.subscription.unsubscribe();
+    api.user()
+      .then(U)
+      .catch((error: Error) => MSG(error.message))
+      .finally(() => R(true));
   }, [api]);
   useEffect(() => {
-    if (user) load();
+    if (user) load().catch((error: Error) => MSG(error.message));
   }, [user?.id]);
   async function action(fn: () => Promise<void>) {
     if (busy) return;
@@ -78,28 +65,16 @@ export default function Teacher() {
   async function auth() {
     if (!api) throw Error("Configurá el proyecto Supabase de pruebas");
     if (mode === "reset") {
-      const { error } = await api.auth.resetPasswordForEmail(email, {
-        redirectTo: location.origin + "/recuperar",
-      });
-      if (error) throw error;
+      await api.recover(email);
       MSG("Si existe la cuenta, recibirás un correo de recuperación.");
       return;
     }
-    const r =
-      mode === "register"
-        ? await api.auth.signUp({
-            email,
-            password,
-            options: {
-              data: { name },
-              emailRedirectTo: location.origin + "/docente",
-            },
-          })
-        : await api.auth.signInWithPassword({ email, password });
-    if (r.error) throw r.error;
-    MSG(
-      mode === "register" ? "Revisá tu correo para confirmar el registro." : "",
-    );
+    const session = mode === "register"
+      ? await api.register(email, password, name)
+      : await api.login(email, password);
+    U(session.user);
+    PW("");
+    if (session.confirmationRequired) MSG("Revisá tu correo para confirmar el registro.");
   }
   async function save() {
     if (!api || !edit) return;
@@ -117,10 +92,7 @@ export default function Teacher() {
       description: edit.description || "",
       questions,
     };
-    const r = edit.id
-      ? await api.from("cr_quizzes").update(data).eq("id", edit.id)
-      : await api.from("cr_quizzes").insert(data);
-    if (r.error) throw r.error;
+    await api.saveQuiz(data, edit.id);
     E(null);
     PV([]);
     await load();
@@ -139,12 +111,13 @@ export default function Teacher() {
     );
   }
   async function readFile(file: File) {
+    PV([]);
     if (file.size > 2 * 1024 * 1024) throw Error("Máximo 2 MB");
     let rows: string[][];
     if (/\.csv$/i.test(file.name)) {
       rows = parseCSV(await file.text());
     } else if (/\.xlsx$/i.test(file.name)) {
-      const { Workbook } = await import("exceljs");
+      const { Workbook, ValueType } = await import("exceljs");
       const w = new Workbook();
       await w.xlsx.load(await file.arrayBuffer());
       const sheet = w.worksheets[0];
@@ -155,7 +128,7 @@ export default function Teacher() {
         const cells: string[] = [];
         for (let i = 1; i <= 9; i++) {
           const cell = r.getCell(i);
-          if (cell.type === 6) throw Error("No se permiten fórmulas");
+          if (cell.type === ValueType.Formula) throw Error("No se permiten fórmulas");
           cells.push(cell.text);
         }
         rows.push(cells);
@@ -165,13 +138,12 @@ export default function Teacher() {
   }
   async function exportGame(code: string) {
     if (!api) return;
-    const r = await api.rpc("cr_state", { c: code });
-    if (r.error) throw r.error;
+    const state = await api.game<GameState>("state", { c: code });
     download(
       `ClassRush-${code}.csv`,
       [
         ["Posición", "Equipo", "Puntos", "Partida"],
-        ...r.data.ranking.map((t: any, i: number) => [
+        ...state.ranking.map((t, i) => [
           i + 1,
           t.name,
           t.points,
@@ -207,11 +179,12 @@ export default function Teacher() {
           <div className="pill">Espacio docente</div>
           <h1>
             {mode === "register"
-              ? "Tu próxima gran clase."
+              ? "Creá tu cuenta docente"
               : mode === "reset"
-                ? "Recuperá tu acceso."
-                : "Bienvenido a tu próxima clase."}
+                ? "Recuperá tu acceso"
+                : "Ingresá a tu biblioteca"}
           </h1>
+          {privatePilot && <p>Usá una cuenta de prueba para crear cuestionarios y dirigir partidas.</p>}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -270,27 +243,33 @@ export default function Teacher() {
             >
               {mode === "register" ? "Ya tengo cuenta" : "Crear cuenta"}
             </button>
-            <button
-              className="muted"
-              onClick={() => M(mode === "reset" ? "login" : "reset")}
-            >
-              {mode === "reset" ? "Volver" : "Olvidé mi contraseña"}
-            </button>
+            {!privatePilot && (
+              <button
+                className="muted"
+                onClick={() => M(mode === "reset" ? "login" : "reset")}
+              >
+                {mode === "reset" ? "Volver" : "Olvidé mi contraseña"}
+              </button>
+            )}
           </div>
         </section>
       ) : (
         <>
           <div className="row">
             <div>
-              <div className="pill">ESPACIO DOCENTE</div>
-              <h1>Clases que se viven.</h1>
+              <h1>Panel docente</h1>
               <p>{user.email}</p>
             </div>
             <button
               className="muted compact"
               onClick={() =>
                 action(async () => {
-                  await api?.auth.signOut();
+                  await api?.signOut();
+                  U(null);
+                  M("login");
+                  N("");
+                  PV([]);
+                  T("library");
                   E(null);
                   Q([]);
                   G([]);
@@ -330,10 +309,7 @@ export default function Teacher() {
                 onClick={() =>
                   action(async () => {
                     if (!name.trim()) throw Error("Ingresá tu nombre");
-                    const r = await api!
-                      .from("cr_profiles")
-                      .upsert({ id: user.id, name: name.trim() });
-                    if (r.error) throw r.error;
+                    await api!.saveProfile(user.id, name.trim());
                     MSG("Perfil guardado");
                   })
                 }
@@ -351,7 +327,7 @@ export default function Teacher() {
                     <div>
                       <h2>{g.title}</h2>
                       <p>
-                        {g.code} · {g.status} ·{" "}
+                        {g.code} · {statusLabels[g.status]} ·{" "}
                         {new Date(g.created_at).toLocaleDateString("es-PY")}
                       </p>
                     </div>
@@ -620,7 +596,7 @@ export default function Teacher() {
                       title: "",
                       subject: "",
                       description: "",
-                      questions: [blank()],
+                      questions: [],
                     });
                     PV([]);
                   }}
@@ -630,11 +606,8 @@ export default function Teacher() {
               </div>
               {!quizzes.length && (
                 <article>
-                  <h2>Todo empieza con una buena pregunta.</h2>
-                  <p>
-                    Creá tu primer cuestionario para cualquier materia. Podrás
-                    usarlo en tantas clases como quieras.
-                  </p>
+                  <h2>Todavía no tenés cuestionarios</h2>
+                  <p>Creá preguntas manualmente o importalas desde Excel o CSV.</p>
                 </article>
               )}
               <div className="grid">
@@ -652,11 +625,8 @@ export default function Teacher() {
                       disabled={busy}
                       onClick={() =>
                         action(async () => {
-                          const r = await api!.rpc("cr_create_game", {
-                            quiz: q.id,
-                          });
-                          if (r.error) throw r.error;
-                          location.assign("/partida/" + r.data);
+                          const code = await api!.game<string>("create", { quiz: q.id });
+                          location.assign("/partida/" + code);
                         })
                       }
                     >
@@ -677,15 +647,12 @@ export default function Teacher() {
                         disabled={busy}
                         onClick={() =>
                           action(async () => {
-                            const r = await api!
-                              .from("cr_quizzes")
-                              .insert({
-                                title: q.title.slice(0, 140) + " (copia)",
-                                subject: q.subject,
-                                description: q.description,
-                                questions: q.questions,
-                              });
-                            if (r.error) throw r.error;
+                            await api!.saveQuiz({
+                              title: q.title.slice(0, 140) + " (copia)",
+                              subject: q.subject,
+                              description: q.description,
+                              questions: q.questions,
+                            });
                             await load();
                           })
                         }
@@ -703,11 +670,7 @@ export default function Teacher() {
                           )
                         )
                           action(async () => {
-                            const r = await api!
-                              .from("cr_quizzes")
-                              .update({ archived: true })
-                              .eq("id", q.id);
-                            if (r.error) throw r.error;
+                            await api!.archiveQuiz(q.id);
                             await load();
                           });
                       }}
@@ -717,14 +680,6 @@ export default function Teacher() {
                   </article>
                 ))}
               </div>
-              <article>
-                <h2>Generación con IA · Próxima fase</h2>
-                <p>
-                  La generación desde texto, PDF y PowerPoint todavía no está
-                  habilitada. Primero validaremos el flujo de juego y los
-                  permisos con docentes reales.
-                </p>
-              </article>
             </>
           )}
         </>
