@@ -28,10 +28,17 @@ async function digest(value) {
   return hex(await crypto.subtle.digest("SHA-256", encoder.encode(value)));
 }
 
-async function passwordHash(password, salt) {
-  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+async function passwordHash(password, salt, pepper) {
+  if (typeof pepper !== "string" || pepper.length < 32) {
+    throw new Error("Falta configurar CLASSRUSH_PASSWORD_PEPPER");
+  }
+  const secret = await crypto.subtle.importKey(
+    "raw", encoder.encode(pepper), { name: "HMAC", hash: "SHA-256" }, false, ["sign"],
+  );
+  const input = await crypto.subtle.sign("HMAC", secret, encoder.encode(password));
+  const key = await crypto.subtle.importKey("raw", input, "PBKDF2", false, ["deriveBits"]);
   return hex(await crypto.subtle.deriveBits({
-    name: "PBKDF2", hash: "SHA-256", salt: encoder.encode(salt), iterations: 600000,
+    name: "PBKDF2", hash: "SHA-256", salt: encoder.encode(salt), iterations: 100000,
   }, key, 256));
 }
 
@@ -63,7 +70,7 @@ function json(data, cookie) {
   return Response.json({ data }, { headers });
 }
 
-async function signIn(db, args, create, session) {
+async function signIn(db, args, create, session, pepper) {
   const email = text(args.email, 254, 3).toLowerCase();
   const password = args.password;
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || typeof password !== "string" || password.length < 10 || password.length > 128) {
@@ -73,12 +80,12 @@ async function signIn(db, args, create, session) {
   let teacher;
   if (create) {
     teacher = { id: crypto.randomUUID(), email, name: text(args.name, 100, 1) };
-    const hash = await passwordHash(password, salt);
+    const hash = await passwordHash(password, salt, pepper);
     const result = await sql(db, "INSERT OR IGNORE INTO teachers VALUES (?, ?, ?, ?, ?)", teacher.id, email, teacher.name, salt, hash).run();
     if (!result.meta.changes) throw new RequestError("Ya existe una cuenta con ese correo.");
   } else {
     teacher = await sql(db, "SELECT * FROM teachers WHERE email = ?", email).first();
-    const hash = await passwordHash(password, teacher?.salt ?? salt);
+    const hash = await passwordHash(password, teacher?.salt ?? salt, pepper);
     if (!teacher || !equalHash(hash, teacher.password_hash)) throw new RequestError("Correo o contraseña incorrectos.", 401);
   }
   const token = hex(crypto.getRandomValues(new Uint8Array(32)));
@@ -234,8 +241,8 @@ async function api(request, env, action) {
   }
   switch (action) {
     case "user": return json(teacher ? publicTeacher(teacher) : null);
-    case "login": return signIn(db, args, false, teacher);
-    case "register": return signIn(db, args, true, teacher);
+    case "login": return signIn(db, args, false, teacher, env.CLASSRUSH_PASSWORD_PEPPER);
+    case "register": return signIn(db, args, true, teacher, env.CLASSRUSH_PASSWORD_PEPPER);
     case "logout":
       if (teacher) await sql(db, "DELETE FROM sessions WHERE token_hash = ?", teacher.token_hash).run();
       return json(null, sessionHeader("", 0));

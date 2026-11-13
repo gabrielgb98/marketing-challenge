@@ -12,7 +12,7 @@ Si ya contás con un entorno Supabase aislado, aplicá en orden las dos migracio
 
 Para probar el correo de Supabase, agregá el origen de prueba y las rutas `/docente` y `/recuperar` a las redirecciones de Auth. Corré `npm ci`, `npm test`, `npm run typecheck`, `npm run build` y `npm run dev`.
 
-El piloto se compila con `node pilot/build.mjs`. El script usa el Next.js del repositorio y requiere `esbuild` en PATH o en `CLASSRUSH_ESBUILD`. La migración de la base de prueba está en `pilot/migrations/`. La rama desactiva los despliegues automáticos de Vercel mientras la versión de prueba se aloja en privado.
+El piloto se compila con `node pilot/build.mjs`. El script usa el Next.js del repositorio y requiere `esbuild` en PATH o en `CLASSRUSH_ESBUILD`. La migración de la base de prueba está en `pilot/migrations/`. El backend del piloto requiere `CLASSRUSH_PASSWORD_PEPPER`, un secreto de servidor aleatorio de al menos 32 caracteres. Conservá el mismo secreto para que las cuentas de prueba puedan seguir iniciando sesión. La rama desactiva los despliegues automáticos de Vercel mientras la versión de prueba se aloja en privado.
 
 ## Prueba funcional (dos docentes y dos equipos)
 1. Registrarse en `/docente`, cerrar sesión, ingresar y guardar perfil. Confirmar el correo solo en un entorno Supabase configurado para ello.
